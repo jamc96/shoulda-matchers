@@ -4,6 +4,8 @@ require_relative '../tests/bundle'
 
 module UnitTests
   class RailsApplication
+    UNWANTED_GEMS = %w(byebug debugger web-console)
+
     def initialize
       @fs = Tests::Filesystem.new
       @bundle = Tests::Bundle.new
@@ -12,6 +14,7 @@ module UnitTests
     def create
       fs.clean
       generate
+      remove_unwanted_gems
       fs.within_project { install_gems }
     end
 
@@ -76,16 +79,13 @@ module UnitTests
       # See here for more on this:
       # http://stackoverflow.com/questions/20361428/rails-i18n-validation-deprecation-warning
 
-      filename = 'config/application.rb'
-
-      lines = fs.read(filename).split("\n")
-      lines.insert(-3, <<EOT)
+      transform_file('config/application.rb') do |lines|
+        lines.insert(-3, <<-EOT)
 if I18n.respond_to?(:enforce_available_locales=)
   I18n.enforce_available_locales = false
 end
-EOT
-
-      fs.write(filename, lines.join("\n"))
+        EOT
+      end
     end
 
     def load_environment
@@ -101,7 +101,19 @@ EOT
       bundle.install_gems
     end
 
-    private
+    def remove_unwanted_gems
+      regexp = Regexp.new(UNWANTED_GEMS.join('|'))
+
+      transform_file('Gemfile') do |lines|
+        lines.reject { |line| line =~ regexp }
+      end
+    end
+
+    def transform_file(filename)
+      lines = fs.read(filename).split("\n")
+      transformed_lines = yield lines
+      fs.write(filename, transformed_lines.join("\n"))
+    end
 
     def run_command!(*args)
       Tests::CommandRunner.run!(*args)
